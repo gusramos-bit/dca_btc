@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BTC DCA — Monte Carlo Simulator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Courier New', monospace;
+    background: #0a0a0a;
+    color: #e0e0e0;
+    min-height: 100vh;
+    padding: 32px 24px;
+  }
+
+  .header {
+    margin-bottom: 36px;
+    border-bottom: 1px solid #222;
+    padding-bottom: 20px;
+  }
+  .header h1 {
+    font-size: 22px;
+    font-weight: normal;
+    letter-spacing: 0.08em;
+    color: #f5f5f5;
+  }
+  .header p {
+    font-size: 12px;
+    color: #555;
+    margin-top: 6px;
+    letter-spacing: 0.04em;
+  }
+
+  .layout { display: grid; grid-template-columns: 280px 1fr; gap: 32px; }
+
+  /* PANEL IZQUIERDO */
+  .panel {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .panel-section { display: flex; flex-direction: column; gap: 14px; }
+  .panel-section-title {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: #444;
+    text-transform: uppercase;
+    border-bottom: 1px solid #1a1a1a;
+    padding-bottom: 6px;
+  }
+
+  .ctrl { display: flex; flex-direction: column; gap: 6px; }
+  .ctrl-row { display: flex; justify-content: space-between; align-items: baseline; }
+  .ctrl-label { font-size: 11px; color: #666; letter-spacing: 0.04em; }
+  .ctrl-value { font-size: 13px; color: #f0c040; font-weight: bold; }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 2px;
+    background: #222;
+    outline: none;
+    border-radius: 0;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    background: #f0c040;
+    border-radius: 0;
+    cursor: pointer;
+  }
+
+  select {
+    background: #111;
+    border: 1px solid #222;
+    color: #f0c040;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    padding: 6px 8px;
+    width: 100%;
+    outline: none;
+    cursor: pointer;
+  }
+
+  .run-btn {
+    background: #f0c040;
+    color: #0a0a0a;
+    border: none;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 12px;
+    cursor: pointer;
+    width: 100%;
+    margin-top: 8px;
+  }
+  .run-btn:hover { background: #ffd84d; }
+  .run-btn:active { background: #d4a800; }
+
+  /* PANEL DERECHO */
+  .main { display: flex; flex-direction: column; gap: 24px; }
+
+  .cards-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+  }
+  .card {
+    background: #0f0f0f;
+    border: 1px solid #1a1a1a;
+    padding: 14px 10px;
+    text-align: center;
+  }
+  .card.highlight { border-color: #f0c040; }
+  .card-label { font-size: 10px; color: #444; letter-spacing: 0.08em; margin-bottom: 6px; }
+  .card-value { font-size: 18px; color: #f5f5f5; }
+  .card-gain { font-size: 11px; margin-top: 4px; }
+  .pos { color: #3ecf8e; }
+  .neg { color: #e05252; }
+
+  .prob-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+  }
+  .prob-item {
+    background: #0f0f0f;
+    border: 1px solid #1a1a1a;
+    padding: 10px;
+    text-align: center;
+  }
+  .prob-label { font-size: 10px; color: #444; letter-spacing: 0.06em; margin-bottom: 4px; }
+  .prob-value { font-size: 16px; color: #f0c040; }
+
+  .summary-bar {
+    display: flex;
+    gap: 24px;
+    font-size: 11px;
+    color: #444;
+    letter-spacing: 0.04em;
+    padding: 10px 0;
+    border-top: 1px solid #1a1a1a;
+    border-bottom: 1px solid #1a1a1a;
+  }
+  .summary-bar span { color: #888; }
+
+  .chart-wrap {
+    position: relative;
+    width: 100%;
+    height: 340px;
+    background: #0a0a0a;
+  }
+
+  .legend {
+    display: flex;
+    gap: 20px;
+    font-size: 11px;
+    color: #444;
+    letter-spacing: 0.04em;
+    flex-wrap: wrap;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .leg { width: 20px; height: 2px; }
+
+  .section-title {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: #333;
+    text-transform: uppercase;
+  }
+
+  .footer {
+    margin-top: 32px;
+    font-size: 10px;
+    color: #2a2a2a;
+    letter-spacing: 0.04em;
+    line-height: 1.8;
+    border-top: 1px solid #111;
+    padding-top: 16px;
+  }
+
+  @media (max-width: 800px) {
+    body { padding: 20px 16px; }
+    .header { margin-bottom: 24px; }
+    .header h1 { font-size: 16px; }
+    .layout { grid-template-columns: 1fr; gap: 24px; }
+    .cards-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    .card { padding: 10px 6px; }
+    .card-label { font-size: 9px; }
+    .card-value { font-size: 14px; }
+    .card-gain { font-size: 10px; }
+    .prob-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    .prob-item { padding: 8px 6px; }
+    .prob-label { font-size: 9px; }
+    .prob-value { font-size: 14px; }
+    .summary-bar { flex-direction: column; gap: 6px; font-size: 11px; }
+    .chart-wrap { height: 260px; }
+    .legend { gap: 12px; font-size: 10px; }
+    input[type=range] { height: 4px; }
+    input[type=range]::-webkit-slider-thumb { width: 22px; height: 22px; }
+    .ctrl-label { font-size: 13px; }
+    .ctrl-value { font-size: 15px; }
+    select { font-size: 14px; padding: 10px 8px; }
+    .run-btn { font-size: 14px; padding: 16px; margin-top: 4px; }
+    .panel-section-title { font-size: 11px; }
+    .section-title { font-size: 10px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>BTC DCA — Monte Carlo Simulator</h1>
+  <p>2000 simulaciones · movimiento browniano geométrico · escala logarítmica</p>
+</div>
+
+<div class="layout">
+  <!-- PANEL CONTROLES -->
+  <div class="panel">
+    <div class="panel-section">
+      <div class="panel-section-title">Capital</div>
+      <div class="ctrl">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Capital inicial</span>
+          <span class="ctrl-value" id="initial-out">$10,000</span>
+        </div>
+        <input type="range" min="0" max="50000" step="1000" value="10000" id="initial">
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-row">
+          <span class="ctrl-label">DCA por período</span>
+          <span class="ctrl-value" id="amount-out">$100</span>
+        </div>
+        <input type="range" min="50" max="500" step="50" value="100" id="amount">
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label" style="margin-bottom:6px;">Frecuencia</div>
+        <select id="freq">
+          <option value="26">Quincenal</option>
+          <option value="52">Semanal</option>
+          <option value="12">Mensual</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-section-title">Mercado</div>
+      <div class="ctrl">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Precio BTC hoy</span>
+          <span class="ctrl-value" id="btcprice-out">$68,000</span>
+        </div>
+        <input type="range" min="40000" max="120000" step="1000" value="68000" id="btcprice">
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-row">
+          <span class="ctrl-label">CAGR esperado</span>
+          <span class="ctrl-value" id="cagr-out">30%</span>
+        </div>
+        <input type="range" min="5" max="100" step="5" value="30" id="cagr">
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Volatilidad anual (HV)</span>
+          <span class="ctrl-value" id="vol-out">40%</span>
+        </div>
+        <input type="range" min="20" max="120" step="5" value="40" id="vol">
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-section-title">Horizonte</div>
+      <div class="ctrl">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Años</span>
+          <span class="ctrl-value" id="years-out">10 años</span>
+        </div>
+        <input type="range" min="1" max="10" step="1" value="10" id="years">
+      </div>
+    </div>
+
+    <button class="run-btn" onclick="update()">▶ Recalcular</button>
+
+    <div style="font-size:10px; color:#2a2a2a; line-height:1.7; margin-top:8px;">
+      Volatility drag = vol²/2<br>
+      Retorno mediano real ≈ CAGR − drag<br>
+      HV actual BTC ~38% (52W)
+    </div>
+  </div>
+
+  <!-- PANEL PRINCIPAL -->
+  <div class="main">
+    <div>
+      <div class="section-title" style="margin-bottom:12px;">Distribución de resultados — 2000 simulaciones</div>
+      <div class="cards-grid" id="cards"></div>
+    </div>
+
+    <div class="summary-bar" id="summary-bar"></div>
+
+    <div>
+      <div class="section-title" style="margin-bottom:12px;">Probabilidades</div>
+      <div class="prob-grid" id="prob-grid"></div>
+    </div>
+
+    <div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <div class="section-title">Caminos simulados — escala log</div>
+        <div class="legend">
+          <div class="legend-item"><div class="leg" style="background:#e05252;"></div><span>P10</span></div>
+          <div class="legend-item"><div class="leg" style="background:#f0c040;"></div><span>P50</span></div>
+          <div class="legend-item"><div class="leg" style="background:#3ecf8e;"></div><span>P90</span></div>
+          <div class="legend-item"><div class="leg" style="background:#333; border-top: 1px dashed #555; height:0;"></div><span>Invertido</span></div>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="chart"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  Monte Carlo · 500 simulaciones · movimiento browniano geométrico · sin fees ni impuestos · no es asesoramiento financiero.<br>
+  Referencia: HV 52W BTC actual ~38% · CAGR a 10Y nunca fue menor a 45% históricamente · CAGR a 5Y nunca fue negativo.
+</div>
+
+<script>
+let chartInstance = null;
+const N_SIMS = 2000;
+
+function fmt(n) { return '$' + Math.round(n).toLocaleString('es-AR'); }
+function fmtS(n) {
+  if (n >= 1000000) return '$' + (n/1000000).toFixed(1) + 'M';
+  if (n >= 1000) return '$' + Math.round(n/1000) + 'K';
+  return '$' + Math.round(n);
+}
+
+function boxMuller() {
+  const u1 = Math.random(), u2 = Math.random();
+  return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
+
+function runSim(initial, amount, freq, years, btcPrice, cagr, vol) {
+  const periods = freq * years;
+  const dt = 1 / freq;
+  const drift = (Math.log(1 + cagr) - 0.5 * vol * vol) * dt;
+  const sigma = vol * Math.sqrt(dt);
+  let btcTotal = initial / btcPrice;
+  let price = btcPrice;
+  const byPeriod = [];
+  for (let i = 0; i < periods; i++) {
+    price = price * Math.exp(drift + sigma * boxMuller());
+    price = Math.max(price, 100);
+    btcTotal += amount / price;
+    byPeriod.push(btcTotal * price);
+  }
+  return { byPeriod, final: btcTotal * price };
+}
+
+function pct(arr, p) {
+  const s = [...arr].sort((a,b) => a-b);
+  return s[Math.min(Math.floor(p/100*s.length), s.length-1)];
+}
+
+function pctByYear(sims, freq, years, p) {
+  return Array.from({length: years}, (_, yi) => {
+    const idx = Math.min(Math.round((yi+1)*freq)-1, freq*years-1);
+    return pct(sims.map(s => s.byPeriod[idx]), p);
+  });
+}
+
+function gainStr(val, inv) {
+  const p = ((val-inv)/inv*100).toFixed(0);
+  return (p>=0?'+':'')+p+'%';
+}
+
+function update() {
+  const initial = +document.getElementById('initial').value;
+  const amount = +document.getElementById('amount').value;
+  const freq = +document.getElementById('freq').value;
+  const years = +document.getElementById('years').value;
+  const btcPrice = +document.getElementById('btcprice').value;
+  const cagr = +document.getElementById('cagr').value / 100;
+  const vol = +document.getElementById('vol').value / 100;
+
+  document.getElementById('initial-out').textContent = '$' + initial.toLocaleString('es-AR');
+  document.getElementById('amount-out').textContent = '$' + amount;
+  document.getElementById('years-out').textContent = years + (years===1?' año':' años');
+  document.getElementById('btcprice-out').textContent = '$' + btcPrice.toLocaleString('es-AR');
+  document.getElementById('cagr-out').textContent = Math.round(cagr*100) + '%';
+  document.getElementById('vol-out').textContent = Math.round(vol*100) + '%';
+
+  const dcaTotal = amount * freq * years;
+  const totalInv = initial + dcaTotal;
+  const drag = ((vol*vol/2)*100).toFixed(1);
+  const realReturn = (cagr*100 - vol*vol/2*100).toFixed(1);
+
+  document.getElementById('summary-bar').innerHTML =
+    `Capital inicial: <span>${fmt(initial)}</span> &nbsp;·&nbsp; DCA total: <span>${fmt(dcaTotal)}</span> &nbsp;·&nbsp; Total invertido: <span>${fmt(totalInv)}</span> &nbsp;·&nbsp; Volatility drag: <span>${drag}%</span> &nbsp;·&nbsp; Retorno mediano real: <span>${realReturn}%/año</span> &nbsp;·&nbsp; Simulaciones: <span>2000</span>`;
+
+  const sims = Array.from({length:N_SIMS}, () => runSim(initial, amount, freq, years, btcPrice, cagr, vol));
+  const finals = sims.map(s => s.final);
+
+  const p10 = pct(finals,10), p25 = pct(finals,25), p50 = pct(finals,50), p75 = pct(finals,75), p90 = pct(finals,90);
+
+  function cardHTML(label, val, inv, highlight) {
+    const g = gainStr(val, inv);
+    const cls = val >= inv ? 'pos' : 'neg';
+    return `<div class="card${highlight?' highlight':''}">
+      <div class="card-label">${label}</div>
+      <div class="card-value">${fmtS(val)}</div>
+      <div class="card-gain ${cls}">${g}</div>
+    </div>`;
+  }
+
+  document.getElementById('cards').innerHTML =
+    cardHTML('Peor 10%', p10, totalInv, false) +
+    cardHTML('P25', p25, totalInv, false) +
+    cardHTML('Mediana P50', p50, totalInv, true) +
+    cardHTML('P75', p75, totalInv, false) +
+    cardHTML('Mejor 10%', p90, totalInv, false);
+
+  const probPos = (finals.filter(v=>v>totalInv).length/N_SIMS*100).toFixed(0);
+  const prob2x = (finals.filter(v=>v>totalInv*2).length/N_SIMS*100).toFixed(0);
+  const prob5x = (finals.filter(v=>v>totalInv*5).length/N_SIMS*100).toFixed(0);
+  const prob10x = (finals.filter(v=>v>totalInv*10).length/N_SIMS*100).toFixed(0);
+  const probL50 = (finals.filter(v=>v<totalInv*0.5).length/N_SIMS*100).toFixed(0);
+
+  document.getElementById('prob-grid').innerHTML = `
+    <div class="prob-item"><div class="prob-label">Ganar dinero</div><div class="prob-value">${probPos}%</div></div>
+    <div class="prob-item"><div class="prob-label">2x o más</div><div class="prob-value">${prob2x}%</div></div>
+    <div class="prob-item"><div class="prob-label">5x o más</div><div class="prob-value">${prob5x}%</div></div>
+    <div class="prob-item"><div class="prob-label">10x o más</div><div class="prob-value">${prob10x}%</div></div>
+    <div class="prob-item"><div class="prob-label">Perder &gt;50%</div><div class="prob-value">${probL50}%</div></div>
+  `;
+
+  const labels = Array.from({length:years}, (_,i) => 'Año '+(i+1));
+  const p10s = pctByYear(sims, freq, years, 10);
+  const p50s = pctByYear(sims, freq, years, 50);
+  const p90s = pctByYear(sims, freq, years, 90);
+  const invS = labels.map((_,i) => totalInv * ((i+1)/years));
+
+  const pathDS = [];
+  const step = Math.max(1, Math.floor(N_SIMS/60));
+  for (let s = 0; s < N_SIMS; s += step) {
+    pathDS.push({
+      data: labels.map((_,yi) => sims[s].byPeriod[Math.min(Math.round((yi+1)*freq)-1, freq*years-1)]),
+      borderColor: 'rgba(240,192,64,0.06)',
+      backgroundColor: 'transparent',
+      borderWidth: 1, pointRadius: 0, tension: 0.3
+    });
+  }
+
+  if (chartInstance) chartInstance.destroy();
+  chartInstance = new Chart(document.getElementById('chart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        ...pathDS,
+        { label:'P10', data:p10s, borderColor:'#e05252', backgroundColor:'transparent', borderWidth:2, pointRadius:4, pointBackgroundColor:'#e05252', tension:0.3 },
+        { label:'P50', data:p50s, borderColor:'#f0c040', backgroundColor:'transparent', borderWidth:2.5, pointRadius:4, pointBackgroundColor:'#f0c040', tension:0.3 },
+        { label:'P90', data:p90s, borderColor:'#3ecf8e', backgroundColor:'transparent', borderWidth:2, pointRadius:4, pointBackgroundColor:'#3ecf8e', tension:0.3 },
+        { label:'Invertido', data:invS, borderColor:'#333', backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, tension:0, borderDash:[4,4] },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display:false },
+        tooltip: {
+          backgroundColor: '#111',
+          borderColor: '#222',
+          borderWidth: 1,
+          titleColor: '#888',
+          bodyColor: '#f5f5f5',
+          titleFont: { family: 'Courier New', size: 11 },
+          bodyFont: { family: 'Courier New', size: 12 },
+          filter: item => item.datasetIndex >= pathDS.length,
+          callbacks: { label: ctx => ctx.dataset.label + ': ' + fmtS(ctx.raw) }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color:'#333', font:{ family:'Courier New', size:11 }, autoSkip:false },
+          grid: { color:'rgba(255,255,255,0.03)' }
+        },
+        y: {
+          type: 'logarithmic',
+          ticks: {
+            color:'#333',
+            font:{ family:'Courier New', size:11 },
+            callback: v => {
+              const vals = [1000,5000,10000,50000,100000,500000,1000000,5000000];
+              return vals.includes(v) ? fmtS(v) : '';
+            }
+          },
+          grid: { color:'rgba(255,255,255,0.03)' }
+        }
+      }
+    }
+  });
+}
+
+['initial','amount','years','btcprice','cagr','vol'].forEach(id =>
+  document.getElementById(id).addEventListener('input', update)
+);
+document.getElementById('freq').addEventListener('change', update);
+update();
+</script>
+</body>
+</html>
